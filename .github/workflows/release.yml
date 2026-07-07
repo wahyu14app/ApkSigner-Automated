@@ -1,12 +1,9 @@
-name: "Sign APK Automated - Wahyu14app"
+name: "Sign APK Automated - Remote Trigger"
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - '*.apk'
+  # Mengaktifkan trigger eksternal dari repositori lain
+  repository_dispatch:
+    types: [trigger_signing]
 
 jobs:
   sign-process:
@@ -14,48 +11,50 @@ jobs:
     name: Sign Android Application
 
     steps:
-      # 1. Ambil kode dari repositori
+      # 1. Ambil kode repositori untuk membaca action lokal (./)
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Setup Java & Android SDK Env (Penting untuk Ubuntu 24.04)
+      # 2. Setup Java & Android SDK Env
       - name: Set up JDK 17 & Android SDK Env
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # 3. Pastikan Build Tools 33.0.0 terinstall sebelum running
+      # 3. Pastikan Build Tools 33.0.0 terinstall
       - name: Install Android Build Tools 33.0.0
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "build-tools;33.0.0"
 
-      # 4. Cari file APK yang diupload
-      - name: Find Uploaded APK
-        id: find_apk
+      # 4. Unduh APK dari URL yang dikirim oleh Repositori A
+      - name: Download Remote APK
         run: |
-          APK_PATH=$(ls *.apk | head -n 1)
-          if [ -z "$APK_PATH" ]; then
-            echo "Error: Tidak ada file APK ditemukan!"
+          echo "Mengunduh APK dari: ${{ github.event.client_payload.apk_url }}"
+          # Mengunduh file dan menyimpannya dengan nama remote-app.apk di root
+          curl -L "${{ github.event.client_payload.apk_url }}" -o remote-app.apk
+          
+          if [ ! -f "remote-app.apk" ]; then
+            echo "Error: Gagal mengunduh file APK dari remote URL!"
             exit 1
           fi
-          echo "FOUND_APK=$APK_PATH" >> $GITHUB_ENV
-          echo "Ditemukan APK: $APK_PATH"
+          echo "FOUND_APK=remote-app.apk" >> $GITHUB_ENV
 
-      # 5. Jalankan logika signing
+      # 5. Jalankan logika signing menggunakan file hasil unduhan
       - name: Sign APK
         id: sign_app
         uses: ./ 
         with:
           releaseDirectory: .
+          fileFilter: "remote-app.apk"
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
           alias: ${{ secrets.ALIAS }}
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
 
-      # 6. Upload hasilnya sebagai Artifact
+      # 6. Upload hasilnya sebagai Artifact yang siap didownload
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: APK-Sudah-Signed
+          name: APK-Remote-Signed
           path: ${{ steps.sign_app.outputs.signedReleaseFile }}
