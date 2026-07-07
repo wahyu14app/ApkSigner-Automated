@@ -6,7 +6,7 @@ on:
       - main
       - master
     paths:
-      - '*.apk' # Berjalan otomatis begitu mendeteksi ada file APK diupload
+      - '*.apk'
 
 jobs:
   sign-process:
@@ -14,23 +14,35 @@ jobs:
     name: Sign Android Application
 
     steps:
-      # 1. Ambil kode dari repositori kamu sendiri
+      # 1. Ambil kode dari repositori
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Cari file APK yang diupload ke root repositori
+      # 2. Setup Java & Android SDK Env (Penting untuk Ubuntu 24.04)
+      - name: Set up JDK 17 & Android SDK Env
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # 3. Pastikan Build Tools 33.0.0 terinstall sebelum running
+      - name: Install Android Build Tools 33.0.0
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "build-tools;33.0.0"
+
+      # 4. Cari file APK yang diupload
       - name: Find Uploaded APK
         id: find_apk
         run: |
           APK_PATH=$(ls *.apk | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "Error: Tidak ada file APK ditemukan di root repositori!"
+            echo "Error: Tidak ada file APK ditemukan!"
             exit 1
           fi
           echo "FOUND_APK=$APK_PATH" >> $GITHUB_ENV
           echo "Ditemukan APK: $APK_PATH"
 
-      # 3. Jalankan logika signing menggunakan kode lokal hasil clone
+      # 5. Jalankan logika signing
       - name: Sign APK
         id: sign_app
         uses: ./ 
@@ -41,7 +53,7 @@ jobs:
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
 
-      # 4. Upload hasilnya sebagai Artifact agar bisa langsung kamu download
+      # 6. Upload hasilnya sebagai Artifact
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
