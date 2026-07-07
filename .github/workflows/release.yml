@@ -1,55 +1,48 @@
-name: "Sign APK Automated - Secure Remote Trigger"
+name: "Sign APK Automated - Cross Repository"
 
 on:
   repository_dispatch:
-    types: [trigger_signing]
+    types: [mulai_tanda_tangan]
 
 jobs:
   sign-process:
     runs-on: ubuntu-latest
-    name: Sign Android Application
-
     steps:
-      # 1. Ambil kode repositori penandatangan
-      - name: Checkout code
+      - name: Checkout Signer Code
         uses: actions/checkout@v4
 
-      # 2. Setup Java & Android SDK Env
       - name: Set up JDK 17 & Android SDK Env
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # 3. Pastikan Build Tools 33.0.0 terinstall
       - name: Install Android Build Tools 33.0.0
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "build-tools;33.0.0"
 
-      # 4. Ambil Artifact secara aman langsung dari Repositori asal menggunakan API resmi
-      - name: Download Remote Artifact Securely
+      # Memanfaatkan API untuk mendownload langsung berkas dari repo sebelah secara privat
+      - name: Ambil APK Mentah Secara Aman
         uses: actions/download-artifact@v4
         with:
-          name: app-output # Harus sama dengan nama artifact di Repositori Asal
-          github-token: ${{ secrets.PROPAGATE_TOKEN }} # Menggunakan PAT yang punya akses read repo asal
+          name: apk-mentah-kamu # Harus sama dengan nama di repoApk
+          github-token: ${{ secrets.TOKEN_AKSES_PRIVAT }}
           repository: ${{ github.event.client_payload.repo_name }}
           run-id: ${{ github.event.client_payload.run_id }}
-          path: remote_build # File APK otomatis diekstrak dan ditaruh di folder ini
+          path: folder_target
 
-      # 5. Jalankan penandatanganan di folder bersih tersebut
-      - name: Sign APK
+      - name: Eksekusi Sign APK
         id: sign_app
         uses: ./ 
         with:
-          releaseDirectory: remote_build
+          releaseDirectory: folder_target
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
           alias: ${{ secrets.ALIAS }}
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
 
-      # 6. Upload hasilnya sebagai Artifact akhir yang siap kamu download
-      - name: Upload Signed APK
+      - name: Upload Hasil Akhir (apk-sign.apk)
         uses: actions/upload-artifact@v4
         with:
-          name: APK-Remote-Signed
+          name: APK-Siap-Pakai
           path: ${{ steps.sign_app.outputs.signedReleaseFile }}
