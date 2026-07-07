@@ -1,147 +1,57 @@
-# Sign Android Release Action
+# ApkSigner-Automated 🚀
 
-This action will help you sign an Android `.apk` or `.aab` (Android App Bundle) file for release.
+Repositori ini berfungsi sebagai pusat penandatanganan (*signing*) APK otomatis berbasis **GitHub Actions** yang mendukung alur kerja antar-repositori (*Cross-Repository*). 
 
-## Inputs
+Dengan memisahkan proses kompilasi kode (*build*) di repositori aplikasi dan proses penandatanganan di repositori ini, berkas Keystore rilis (`.jks` / `.keystore`) kamu akan tetap aman, terisolasi, dan tidak tercampur dalam kode sumber proyek utama.
 
-### `releaseDirectory`
+---
 
-**Required:** The relative directory path in your project where your Android release file will be located
+## 📦 Alur Kerja (Cara Kerja Sistem)
 
-### `signingKeyBase64`
+Sistem ini menggunakan metode **Push-and-Pull** yang aman melalui GitHub API:
+1. **Repositori Aplikasi (`repoApk`)** selesai melakukan *build* APK debug/unsigned, lalu menitipkannya di server Artifact GitHub.
+2. **`repoApk`** mengirim sinyal otomatis (*Repository Dispatch*) ke repositori ini membawa data ID Run terkait.
+3. **`ApkSigner-Automated`** mendeteksi sinyal, lalu memantau (`gh run watch`) hingga repositori sebelah benar-benar selesai mengunggah file.
+4. Berkas APK mentah diunduh secara privat, ditandatangani menggunakan Keystore rahasia milikmu, dan hasilnya diunggah kembali sebagai **Artifact Siap Pakai**.
 
-**Required:** The base64 encoded signing key used to sign your app
+---
 
-This action will directly decode this input to a file to sign your release with. You can prepare your key by running this command on *nix systems.
+## 🔐 Persiapan Rahasia (Repository Secrets)
 
-```bash
-openssl base64 < some_signing_key.jks | tr -d '\n' | tee some_signing_key.jks.base64.txt
-```
-Then copy the contents of the `.txt` file to your GH secrets
+Sebelum memulai, kamu wajib mendaftarkan beberapa variabel rahasia di menu **Settings -> Secrets and variables -> Actions** pada masing-masing repositori.
 
-### `alias`
+### 1. Token Akses Privat (PAT)
+Buat sebuah **Personal Access Token (Fine-grained)** melalui pengaturan akun GitHub kamu (**Settings -> Developer Settings -> Personal Access Tokens**).
+* **Izin Akses (Permissions):** Berikan akses `Contents: Read & Write` dan `Actions: Read & Write`.
+* **Repository Access:** Pilih *All Repositories* atau pilih repositori aplikasi kamu dan repositori `ApkSigner-Automated`.
 
-**Required:** The alias of your signing key 
+> ⚠️ **PENTING:** Simpan token ini dengan nama **`TOKEN_AKSES_PRIVAT`** di **KEDUA** repositori (Repositori Aplikasi dan `ApkSigner-Automated`).
 
-### `keyStorePassword`
+### 2. Secrets Spesifik di `ApkSigner-Automated`
+Daftarkan kunci-kunci berikut di dalam repositori penandatangan ini:
+* `SIGNING_KEY`: Kode base64 dari file Keystore kamu (`.jks` atau `.keystore`).
+* `ALIAS`: Nama alias Keystore kamu.
+* `KEY_STORE_PASSWORD`: Kata sandi Keystore.
+* `KEY_PASSWORD`: Kata sandi Kunci/Alias.
 
-**Required:** The password to your signing keystore
+---
 
-### `keyPassword`
+## 🛠️ Cara Penggunaan
 
-**Optional:** The private key password for your signing keystore
-
-## ENV: `BUILD_TOOLS_VERSION`
-
-**Optional:** You can manually specify a version of build-tools to use. We use `34.0.0` by default.
-
-## Outputs
-
-Output variables are set both locally and in environment variables.
-
-### `signedReleaseFile`/ ENV: `SIGNED_RELEASE_FILE`
-
-The path to the single release file that have been signed with this action.
-Not set if several release files have been signed.
-
-### `signedReleaseFiles` / ENV: `SIGNED_RELEASE_FILES`
-
-The paths to the release files that have been signed with this action,
-separated by `:`.
-
-## Example usage
-
-### Single APK
-
-The output variable `signedReleaseFile` can be used in a release action.
+### Langkah 1: Konfigurasi di Repositori Aplikasi (`repoApk`)
+Tambahkan potongan perintah ini di bagian akhir file `.github/workflows/android.yml` milik repositori aplikasimu (tepat setelah proses *build* selesai):
 
 ```yaml
-steps:
-  - uses: r0adkll/sign-android-release@v1
-    name: Sign app APK
-    # ID used to access action output
-    id: sign_app
-    with:
-      releaseDirectory: app/build/outputs/apk/release
-      signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-      alias: ${{ secrets.ALIAS }}
-      keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-      keyPassword: ${{ secrets.KEY_PASSWORD }}
-    env:
-      # override default build-tools version (33.0.0) -- optional
-      BUILD_TOOLS_VERSION: "34.0.0"
+    - name: Upload Unsigned APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: apk-mentah-kamu
+        path: app/build/outputs/apk/debug/app-debug.apk # Sesuaikan dengan letak output build-mu
 
-  # Example use of `signedReleaseFile` output -- not needed
-  - uses: actions/upload-artifact@v2
-    with:
-      name: Signed app bundle
-      path: ${{steps.sign_app.outputs.signedReleaseFile}}
-```
-
-### Multiple APKs, multiple variables
-
-The output variables `signedReleaseFileX`
-can be used to refer to each signed release file.
-
-```yaml
-steps:
-  - uses: r0adkll/sign-android-release@v1
-    id: sign_app
-    with:
-      releaseDirectory: app/build/outputs/apk/release
-      signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-      alias: ${{ secrets.ALIAS }}
-      keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-      keyPassword: ${{ secrets.KEY_PASSWORD }}
-
-  - name: Example Release
-    uses: "marvinpinto/action-automatic-releases@latest"
-    with:
-      repo_token: "${{ secrets.GITHUB_TOKEN }}"
-      automatic_release_tag: "latest"
-      prerelease: true
-      title: "Release X"
-      files: |
-        ${{ steps.sign_app.signedReleaseFile0 }}
-        ${{ steps.sign_app.signedReleaseFile1 }}
-        ${{ steps.sign_app.signedReleaseFile2 }}
-        ${{ steps.sign_app.signedReleaseFile3 }}
-        ${{ steps.sign_app.signedReleaseFile4 }}
-```
-
-### Multiple APKs, single variable
-
-The output variable `signedReleaseFiles` must be split first,
-before being used in a release action.
-
-```yaml
-steps:
-  - uses: r0adkll/sign-android-release@v1
-    id: sign_app
-    with:
-      releaseDirectory: app/build/outputs/apk/release
-      signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-      alias: ${{ secrets.ALIAS }}
-      keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-      keyPassword: ${{ secrets.KEY_PASSWORD }}
-
-  - uses: jungwinter/split@v1
-    id: signed_files
-    with:
-      msg: ${{ steps.sign_app.signedReleaseFiles }}
-      separator: ':'
-
-  - name: Example Release
-    uses: "marvinpinto/action-automatic-releases@latest"
-    with:
-      repo_token: "${{ secrets.GITHUB_TOKEN }}"
-      automatic_release_tag: "latest"
-      prerelease: true
-      title: "Release X"
-      files: |
-        ${{ steps.signed_files._0 }}
-        ${{ steps.signed_files._1 }}
-        ${{ steps.signed_files._2 }}
-        ${{ steps.signed_files._3 }}
-        ${{ steps.signed_files._4 }}
-```
+    - name: Kirim Sinyal ke Signer Repositori
+      run: |
+        curl -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ secrets.TOKEN_AKSES_PRIVAT }}" \
+          [https://api.github.com/repos/$](https://api.github.com/repos/$){{ github.repository_owner }}/ApkSigner-Automated/dispatches \
+          -d '{"event_type": "mulai_tanda_tangan", "client_payload": { "run_id": "${{ github.run_id }}", "repo_name": "${{ github.repository }}" }}'
