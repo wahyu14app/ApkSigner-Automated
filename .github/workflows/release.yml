@@ -21,11 +21,22 @@ jobs:
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "build-tools;33.0.0"
 
+      # --- LANGKAH BARU YANG DITAMBAHKAN ---
+      # Menunggu workflow di repositori sumber selesai 100% agar Artifact v4 terbuka aksesnya
+      - name: Pantau Status Repositori Asal
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN_AKSES_PRIVAT }}
+        run: |
+          echo "Menunggu workflow di repositori ${{ github.event.client_payload.repo_name }} selesai sepenuhnya..."
+          gh run watch ${{ github.event.client_payload.run_id }} --repo ${{ github.event.client_payload.repo_name }}
+          echo "Workflow asal telah selesai. Artifact siap diunduh!"
+      # -------------------------------------
+
       # Memanfaatkan API untuk mendownload langsung berkas dari repo sebelah secara privat
       - name: Ambil APK Mentah Secara Aman
         uses: actions/download-artifact@v4
         with:
-          name: apk-mentah-kamu # Harus sama dengan nama di repoApk
+          name: apk-mentah-kamu # Harus sama persis dengan nama artifact di repositori build
           github-token: ${{ secrets.TOKEN_AKSES_PRIVAT }}
           repository: ${{ github.event.client_payload.repo_name }}
           run-id: ${{ github.event.client_payload.run_id }}
