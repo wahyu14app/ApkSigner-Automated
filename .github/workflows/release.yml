@@ -1,58 +1,49 @@
-name: "Tag & Deploy Action"
+name: "Sign APK Automated - Wahyu14app"
 
 on:
   push:
     branches:
-      - master
       - main
+      - master
+    paths:
+      - '*.apk' # Berjalan otomatis begitu mendeteksi ada file APK diupload
 
 jobs:
-  test:
+  sign-process:
     runs-on: ubuntu-latest
-    name: Test action
+    name: Sign Android Application
 
     steps:
-      - uses: actions/checkout@v1
-        name: Checkout code
+      # 1. Ambil kode dari repositori kamu sendiri
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Run tests
-        run: npm run test
+      # 2. Cari file APK yang diupload ke root repositori
+      - name: Find Uploaded APK
+        id: find_apk
+        run: |
+          APK_PATH=$(ls *.apk | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: Tidak ada file APK ditemukan di root repositori!"
+            exit 1
+          fi
+          echo "FOUND_APK=$APK_PATH" >> $GITHUB_ENV
+          echo "Ditemukan APK: $APK_PATH"
 
-      - uses: pCYSl5EDgo/cat@1.0.0
-        name: Cat for GitHub Actions
-        id: get_key
+      # 3. Jalankan logika signing menggunakan kode lokal hasil clone
+      - name: Sign APK
+        id: sign_app
+        uses: ./ 
         with:
-          path: __tests__/test_key_b64.txt
+          releaseDirectory: .
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
 
-      - uses: ./
-        name: Sign APK
+      # 4. Upload hasilnya sebagai Artifact agar bisa langsung kamu download
+      - name: Upload Signed APK
+        uses: actions/upload-artifact@v4
         with:
-          releaseDirectory: __tests__/apk
-          signingKeyBase64: ${{ steps.get_key.outputs.text }}
-          alias: test_key
-          keyStorePassword: android
-          keyPassword: android
-
-      - uses: ./
-        name: Sign AAB
-        with:
-          releaseDirectory: __tests__/aab
-          signingKeyBase64: ${{ steps.get_key.outputs.text }}
-          alias: test_key
-          keyStorePassword: android
-          keyPassword: android
-
-  release:
-    needs: test
-    runs-on: ubuntu-latest
-    name: Update action
-
-    steps:
-      - uses: actions/checkout@v1
-        name: Checkout code
-
-      - name: Update v1 Tag
-        uses: hole19/git-tag-action@master
-        env:
-          TAG: v1
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: APK-Sudah-Signed
+          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
