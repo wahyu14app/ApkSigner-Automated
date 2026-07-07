@@ -1,4 +1,4 @@
-name: "Sign APK Automated - Remote Trigger"
+name: "Sign APK Automated - Secure Remote Trigger"
 
 on:
   repository_dispatch:
@@ -10,7 +10,7 @@ jobs:
     name: Sign Android Application
 
     steps:
-      # 1. Ambil kode repositori
+      # 1. Ambil kode repositori penandatangan
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -26,34 +26,28 @@ jobs:
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "build-tools;33.0.0"
 
-      # 4. Buat folder kosong khusus untuk memisahkan APK target
-      - name: Download Remote APK
-        run: |
-          mkdir -p remote_build
-          echo "Mengunduh APK dari: ${{ github.event.client_payload.apk_url }}"
-          
-          # Menggunakan -f (fail) dan -sS (silent show error) agar ketahuan jika URL-nya bermasalah
-          curl -f -L "${{ github.event.client_payload.apk_url }}" -o remote_build/remote-app.apk
-          
-          # Cek apakah file benar-benar ada dan tidak kosong (ukuran > 0 bytes)
-          if [ ! -s "remote_build/remote-app.apk" ]; then
-            echo "Error: File hasil download kosong atau gagal diunduh!"
-            exit 1
-          fi
+      # 4. Ambil Artifact secara aman langsung dari Repositori asal menggunakan API resmi
+      - name: Download Remote Artifact Securely
+        uses: actions/download-artifact@v4
+        with:
+          name: app-output # Harus sama dengan nama artifact di Repositori Asal
+          github-token: ${{ secrets.PROPAGATE_TOKEN }} # Menggunakan PAT yang punya akses read repo asal
+          repository: ${{ github.event.client_payload.repo_name }}
+          run-id: ${{ github.event.client_payload.run_id }}
+          path: remote_build # File APK otomatis diekstrak dan ditaruh di folder ini
 
-      # 5. Jalankan penandatanganan di folder khusus tersebut
+      # 5. Jalankan penandatanganan di folder bersih tersebut
       - name: Sign APK
         id: sign_app
         uses: ./ 
         with:
-          # Arahkan ke folder khusus yang HANYA berisi 1 file APK hasil download tadi
           releaseDirectory: remote_build
           signingKeyBase64: ${{ secrets.SIGNING_KEY }}
           alias: ${{ secrets.ALIAS }}
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
 
-      # 6. Upload hasilnya sebagai Artifact
+      # 6. Upload hasilnya sebagai Artifact akhir yang siap kamu download
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
